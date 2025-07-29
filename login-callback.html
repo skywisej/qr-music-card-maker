@@ -3,7 +3,7 @@
     const REDIRECT = "https://skywisej.github.io/qr-music-card-maker/login-callback.html"  
     const params   = new URLSearchParams(location.search);
     const code     = params.get("code");
-    const verifier = sessionStorage.getItem("hitster_verifier");
+    const verifier = localStorage.getItem("hitster_verifier");
     if (!code || !verifier){
       document.body.textContent = "Login failed. Try again.";
       throw new Error("Missing code or verifier");
@@ -16,6 +16,10 @@
       redirect_uri:      REDIRECT,
       code_verifier:     verifier
     });
+
+    const next = localStorage.getItem("after_auth") || "/qr-music-card-maker/cards/html/track1.html";
+    localStorage.removeItem("after_auth");
+    location.href = next;
     
     fetch("https://accounts.spotify.com/api/token", {
       method: "POST",
@@ -25,7 +29,7 @@
     .then(r => r.json())
     .then(js => {
       if (js.access_token){
-        sessionStorage.setItem("hitster_token", js.access_token);
+        localStorage.setItem("hitster_token", js.access_token);
         location.href = "cards/html/track1.html";        // start deck
       }else{
         document.body.textContent = "Token exchange failed.";

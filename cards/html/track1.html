@@ -38,9 +38,11 @@
 
 <script>
   const trackUri = "spotify:track:3KkXRkHbMCARz0aVfEt68P";          // replaced by Python
-  const token    = sessionStorage.getItem("hitster_token");
+  const token    = localStorage.getItem("hitster_token");
   if (!token){
-  location.href = location.origin + "/qr-music-card-maker/login.html";
+    // save the path we actually wanted
+    localStorage.setItem("after_auth", location.pathname);
+    location.href = location.origin + "/qr-music-card-maker/login.html";
   }
   
   let player, deviceId = null;
