@@ -59,7 +59,7 @@ TRACK_IDS = [
     "2WfaOiMkCvy7F5fcp2zZ8L"    # Take On Me
 ]
 OUTPUT_PDF = "hitster_deck.pdf"
-BASE_URL   = "https://example.com/cards/"   # <-- Phase 4: replace with GitHub Pages URL
+BASE_URL   = "https://skywisej.github.io/qr-music-card-maker/"   # <-- Phase 4: replace with GitHub Pages URL
 TEMPLATE_HTML = "card-template.html"  # file you just saved
 
 # ---------- SECTION 5 : Prepare folders ----------
