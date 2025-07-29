@@ -1,5 +1,6 @@
 <!DOCTYPE html><html><body style="background:black;color:white;">
     <script>
+    const REDIRECT = "https://skywisej.github.io/qr-music-card-maker/login-callback.html"  
     const params   = new URLSearchParams(location.search);
     const code     = params.get("code");
     const verifier = sessionStorage.getItem("hitster_verifier");
@@ -12,7 +13,7 @@
       grant_type:        "authorization_code",
       client_id:         "f373adfc90734648bd432988e370ab64",          // same ID
       code,
-      redirect_uri:      location.origin + "https://skywisej.github.io/qr-music-card-maker/login-callback.html",
+      redirect_uri:      REDIRECT,
       code_verifier:     verifier
     });
     
