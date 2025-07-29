@@ -14,7 +14,9 @@
 <script>
   const trackUri = "spotify:track:5Z01UMMf7V1o0MzF86s6WJ";          // replaced by Python
   const token    = sessionStorage.getItem("hitster_token");
-  if (!token){ location.href = "../login.html"; }
+  if (!token){
+  location.href = location.origin + "/qr-music-card-maker/login.html";
+  }
   
   let player, deviceId = null;
   let hasStarted = false;     // did we already send the first play?
