@@ -4,6 +4,7 @@
     const params   = new URLSearchParams(location.search);
     const code     = params.get("code");
     const verifier = localStorage.getItem("hitster_verifier");
+    console.log("DEBUG code present?", !!code, "verifier present?", !!verifier);
     if (!code || !verifier){
       document.body.textContent = "Login failed. Try again.";
       throw new Error("Missing code or verifier");

@@ -32,7 +32,7 @@ document.getElementById("login").onclick = async () => {
   const digest   = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
   const challenge = base64url(digest);
 
-  sessionStorage.setItem("hitster_verifier", verifier);
+  localStorage.setItem("hitster_verifier", verifier);
 
   // 2. redirect to Spotify authorize
   const url = new URL("https://accounts.spotify.com/authorize");
