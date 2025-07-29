@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title></title>
+<script src="https://sdk.scdn.co/spotify-player.js"></script>
+<style>
+  html,body{margin:0;height:100%;background:black;}
+  #mask{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  #mask::before{content:'';width:0;height:0;border-left:60px solid white;border-top:40px solid transparent;border-bottom:40px solid transparent;}
+</style>
+</head>
+<body>
+<div id="mask"></div>
+
+<script>
+  const trackUri = "spotify:track:3KkXRkHbMCARz0aVfEt68P";          // replaced by Python
+  const token    = sessionStorage.getItem("hitster_token");
+  if (!token){ location.href = "../login.html"; }
+  
+  let player, deviceId = null;
+  let hasStarted = false;     // did we already send the first play?
+  let isPlaying  = false;     // current state
+  
+  window.onSpotifyWebPlaybackSDKReady = () => {
+    player = new Spotify.Player({
+      name: 'Hitster Deck',
+      volume: 0.8,
+      getOAuthToken: cb => cb(token)
+    });
+  
+    player.addListener('ready', ({ device_id }) => deviceId = device_id);
+    player.addListener('player_state_changed', s => {
+      /* keep isPlaying in sync with SDK */
+      if (s) isPlaying = !s.paused;
+    });
+  
+    player.connect();
+  };
+  
+  const mask = document.getElementById('mask');
+  mask.onclick = () => {
+    /* wait until deviceId is ready */
+    if (!deviceId) { setTimeout(() => mask.onclick(), 150); return; }
+  
+    if (!hasStarted) {
+      /* FIRST click: start the track via Web API */
+      fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+        method: "PUT",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ uris: [ trackUri ] })
+      }).catch(console.error);
+  
+      hasStarted = true;
+      isPlaying  = true;
+    } else {
+      /* Subsequent clicks: toggle play / pause */
+      player.togglePlay().catch(console.error);
+      isPlaying = !isPlaying;    // optimistic; SDK event will correct if needed
+    }
+  };
+  </script>
+  
+</body>
+</html>

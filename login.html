@@ -1,0 +1,39 @@
+<!DOCTYPE html><html>
+<head><meta charset="utf-8"><title>Hitster Login</title></head>
+<body style="height:100vh;display:flex;align-items:center;justify-content:center;background:black;">
+<button id="login"
+  style="font-size:1.1rem;padding:1rem 2rem;border-radius:8px;border:none;cursor:pointer;">
+  Log in with Spotify
+</button>
+
+<script>
+const CLIENT_ID = "f373adfc90734648bd432988e370ab64";                // <‑‑ fill in
+const REDIRECT  = "http://127.0.0.1:8080/login-callback.html"; // or GitHub URL https://skywisej.github.io/hitster-cards/login-callback.html in prod
+const SCOPES    = "streaming user-read-email user-modify-playback-state";
+
+function base64url(bytes){
+  return btoa(String.fromCharCode(...new Uint8Array(bytes)))
+         .replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
+}
+
+document.getElementById("login").onclick = async () => {
+  // 1. create verifier + challenge
+  const rand   = crypto.getRandomValues(new Uint8Array(64));
+  const verifier = base64url(rand);
+  const digest   = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const challenge = base64url(digest);
+
+  sessionStorage.setItem("hitster_verifier", verifier);
+
+  // 2. redirect to Spotify authorize
+  const url = new URL("https://accounts.spotify.com/authorize");
+  url.searchParams.set("client_id", CLIENT_ID);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("redirect_uri", REDIRECT);
+  url.searchParams.set("code_challenge_method", "S256");
+  url.searchParams.set("code_challenge", challenge);
+  url.searchParams.set("scope", SCOPES);
+  location.href = url;
+};
+</script>
+</body></html>
