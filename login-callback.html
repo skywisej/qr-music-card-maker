@@ -27,7 +27,12 @@
       headers: { "Content-Type":"application/x-www-form-urlencoded" },
       body: data
     })
-    .then(r => r.json())
+    .then(async r => {
+      const txt = await r.text(); // read raw text
+      console.log("TOKEN STATUS", r.status, "RAW BODY:", txt);
+      try { return JSON.parse(txt); }   // continue as before
+      catch { return {}; }
+    })  
     .then(js => {
       if (js.access_token){
         localStorage.setItem("hitster_token", js.access_token);
