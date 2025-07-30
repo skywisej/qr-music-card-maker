@@ -1,56 +1,52 @@
-<!DOCTYPE html><html><body style="background:black;color:white;">
-    <script>
-    const REDIRECT = "https://skywisej.github.io/qr-music-card-maker/login-callback.html"  
-    const params   = new URLSearchParams(location.search);
-    const code     = params.get("code");
-    const verifier = localStorage.getItem("hitster_verifier");
-    console.log("DEBUG code present?", !!code, "verifier present?", !!verifier);
-    if (!code || !verifier){
-      document.body.textContent = "Login failed. Try again.";
-      throw new Error("Missing code or verifier");
-    }
-    
-    const data = new URLSearchParams({
-      grant_type:        "authorization_code",
-      client_id:         "f373adfc90734648bd432988e370ab64",          // same ID
-      code,
-      redirect_uri:      REDIRECT,
-      code_verifier:     verifier
-    });
+<!DOCTYPE html><html><body style="background:black;color:white;"><pre id="log"></pre>
+<script>
+const log = (...msg) => document.getElementById("log").textContent += msg.join(" ")+"\n";
 
-    const next = localStorage.getItem("after_auth") || "/qr-music-card-maker/cards/html/track1.html";
-    localStorage.removeItem("after_auth");
-    location.href = next;
-    
- (async () => {
-  try {
-    const r = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json"        // <- helps CORS edge‑cases
-      },
-      body: data
-    });
+log("callback start");
 
-    const raw = await r.text();
-    console.log("TOKEN STATUS", r.status, "RAW BODY:", raw);
+const code     = new URLSearchParams(location.search).get("code");
+const verifier = localStorage.getItem("hitster_verifier");
 
-    if (!r.ok) throw new Error("token fetch " + r.status);
+log("code present?", !!code, "verifier present?", !!verifier);
 
-    const js = JSON.parse(raw);
-    localStorage.setItem("hitster_token", js.access_token);
+if (!code || !verifier){
+  log("Missing code or verifier – reload login");
+  location.href = "/qr-music-card-maker/login.html";
+  throw "";
+}
 
-    const next = localStorage.getItem("after_auth")
-               || "/qr-music-card-maker/cards/html/track1.html";
-    localStorage.removeItem("after_auth");
-    location.href = next;
+const data = new URLSearchParams({
+  grant_type:    "authorization_code",
+  client_id:     "f373adfc90734648bd432988e370ab64",   // same ID
+  code,
+  redirect_uri:  "https://skywisej.github.io/qr-music-card-maker/login-callback.html",
+  code_verifier: verifier
+});
 
-  } catch (e) {
-    console.error("TOKEN EXCHANGE FAILED:", e);
-    document.body.textContent = "Token exchange failed (see console).";
-  }
-})();
+(async () => {
+try{
+  const r   = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Accept": "application/json"          // helps CORS
+    },
+    body: data
+  });
+  const raw = await r.text();
+  log("TOKEN STATUS", r.status, raw);
+  if(!r.ok) throw new Error("token fetch "+r.status);
 
-    </script></body></html>
+  const js = JSON.parse(raw);
+  localStorage.setItem("hitster_token", js.access_token);
+  const next = localStorage.getItem("after_auth")
+             || "/qr-music-card-maker/cards/html/track1.html";
+  localStorage.removeItem("after_auth");
+  location.href = next;
+}catch(e){
+  log("Token exchange failed:", e);
+}})();
+</script>
+</body></html>
+
     

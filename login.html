@@ -1,41 +1,33 @@
 <!DOCTYPE html><html>
-<head><meta charset="utf-8"><title>Hitster Login</title></head>
+<head><meta charset="utf-8"><title>Login • QR Music Deck</title></head>
 <body style="height:100vh;display:flex;align-items:center;justify-content:center;background:black;">
-<button id="login"
-  style="
-    font-size:1.4rem;
-    padding:1rem 2.5rem;
-    border-radius:12px;
-    border:none;
-    cursor:pointer;
-    background:#1db954;
-    color:white;
-    box-shadow:0 2px 6px rgba(0,0,0,.4);
-    ">
-  Log in with Spotify
+<button id="login" style="
+  font-size:1.5rem;padding:1rem 2.5rem;border-radius:12px;
+  background:#1db954;color:white;border:none;cursor:pointer;
+  box-shadow:0 2px 6px rgba(0,0,0,.4);">
+  Log in with Spotify
 </button>
 
 <script>
-const CLIENT_ID = "f373adfc90734648bd432988e370ab64";                // <‑‑ fill in
-const REDIRECT  = "https://skywisej.github.io/qr-music-card-maker/login-callback.html"; // or GitHub URL in prod
+const CLIENT_ID = "f373adfc90734648bd432988e370ab64";   // ← copy from dashboard
+const REDIRECT  = "https://skywisej.github.io/qr-music-card-maker/login-callback.html";
 const SCOPES    = "streaming user-read-email user-modify-playback-state";
 
-function base64url(bytes){
-  return btoa(String.fromCharCode(...new Uint8Array(bytes)))
+function base64url(buf){
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
          .replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
 }
 
 document.getElementById("login").onclick = async () => {
-  // 1. create verifier + challenge
-  const rand   = crypto.getRandomValues(new Uint8Array(64));
-  const verifier = base64url(rand);
-  const digest   = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-  const challenge = base64url(digest);
+  const rand      = crypto.getRandomValues(new Uint8Array(64));
+  const verifier  = base64url(rand);
+  const hash      = await crypto.subtle.digest("SHA-256",
+                     new TextEncoder().encode(verifier));
+  const challenge = base64url(hash);
 
   localStorage.setItem("hitster_verifier", verifier);
-  console.log("DEBUG saved verifier =", localStorage.getItem("hitster_verifier"));
+  console.log("DEBUG saved verifier =", verifier);
 
-  // 2. redirect to Spotify authorize
   const url = new URL("https://accounts.spotify.com/authorize");
   url.searchParams.set("client_id", CLIENT_ID);
   url.searchParams.set("response_type", "code");
@@ -43,7 +35,9 @@ document.getElementById("login").onclick = async () => {
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("scope", SCOPES);
+
   location.href = url;
 };
 </script>
 </body></html>
+
