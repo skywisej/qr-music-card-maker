@@ -29,12 +29,14 @@
     content:'';
     position:absolute;
     top:50%;                       /* center vertically */
-    width:18px; height:60px;       /* bar size */
+    width:22px;        /* bar width */
+    height:60px;       /* bar height */
     background:white;
-    transform:translate(-150%,-50%);   /* left bar */
+    border:none;      /* kill the old triangle border */
+    transform:translate(-140%,-50%);   /* left bar */
   }
   #mask.paused::after{
-    transform:translate(50%,-50%);     /* right bar */
+    transform:translate(40%,-50%);     /* right bar */
   }   
 </style>
 </head>
