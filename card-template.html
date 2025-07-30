@@ -47,6 +47,15 @@
 <script>
   const trackUri = "SPOTIFY_TRACK_URI";          // replaced by Python
   const token    = localStorage.getItem("hitster_token");
+  requireToken();
+  function requireToken(){
+  /* If no token (or removed after 401) redirect to login.html */
+  if (!localStorage.getItem("hitster_token")){
+    localStorage.setItem("after_auth", location.pathname);
+    location.href = location.origin + "/qr-music-card-maker/login.html";
+    throw "Redirecting to login…";
+  }
+}
   if (!token){
     // save the path we actually wanted
     localStorage.setItem("after_auth", location.pathname);
@@ -89,9 +98,21 @@ mask.onclick = () => {
       if (deviceId){
         fetch("https://api.spotify.com/v1/me/player/play?device_id="+deviceId,{
           method:"PUT",
-          headers:{ "Authorization":"Bearer "+token,"Content-Type":"application/json" },
-          body:JSON.stringify({uris:[ trackUri ]})
-        }).catch(console.error);
+          headers:{
+            "Authorization":"Bearer "+token,
+            "Content-Type":"application/json"
+          },
+          body: JSON.stringify({uris:[ trackUri ]})
+        })
+        .then(r => {
+          if (r.status === 401 || r.status === 403){
+           /* Token has expired or was revoked – wipe and re‑login */
+            localStorage.removeItem("hitster_token");
+            alert("Spotify session expired – please log in again.");
+            requireToken();
+          }
+        })
+        .catch(console.error);
         hasStarted = true;
         isPlaying  = true;
         mask.classList.add("playing");
