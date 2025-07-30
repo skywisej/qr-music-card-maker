@@ -21,6 +21,14 @@
     border-left:80px solid white;
     border-top:50px solid transparent;
     border-bottom:50px solid transparent;}
+  #mask.playing::before { 
+    border-left-color:#1db954; }   /* triangle turns Spotify green while playing */
+  #mask.paused::before  { 
+    content:'';             /* ▐▐ pause icon when paused */
+    width:40px; height:40px;
+    box-shadow:13px 0 0 0 white,   /* two white bars */
+               35px 0 0 0 white;
+    border:none;}   
 </style>
 </head>
 <body>
@@ -65,30 +73,40 @@
     player.connect();
   };
   
-  const mask = document.getElementById('mask');
-  mask.onclick = () => {
-    /* wait until deviceId is ready */
-    if (!deviceId) { setTimeout(() => mask.onclick(), 150); return; }
-  
-    if (!hasStarted) {
-      /* FIRST click: start the track via Web API */
-      fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-        method: "PUT",
-        headers: {
-          "Authorization": "Bearer " + token,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ uris: [ trackUri ] })
-      }).catch(console.error);
-  
-      hasStarted = true;
-      isPlaying  = true;
-    } else {
-      /* Subsequent clicks: toggle play / pause */
-      player.togglePlay().catch(console.error);
-      isPlaying = !isPlaying;    // optimistic; SDK event will correct if needed
-    }
-  };
+const mask = document.getElementById('mask');
+mask.onclick = () => {
+  /* Safari autoplay helper: unlock audio the first time */
+  if (typeof window._autoplayUnlocked === "undefined") {
+    try {
+      const ctx = new AudioContext();
+      ctx.resume().then(() => { window._autoplayUnlocked = true; });
+    } catch {}
+  }
+
+  if (!hasStarted) {
+    /* FIRST click – start track via Web API */
+    const waitForDevice = () => {
+      if (deviceId){
+        fetch("https://api.spotify.com/v1/me/player/play?device_id="+deviceId,{
+          method:"PUT",
+          headers:{ "Authorization":"Bearer "+token,"Content-Type":"application/json" },
+          body:JSON.stringify({uris:[ trackUri ]})
+        }).catch(console.error);
+        hasStarted = true;
+        isPlaying  = true;
+        mask.classList.add("playing");
+      } else { setTimeout(waitForDevice,200); }
+    };
+    waitForDevice();
+  } else {
+    /* Subsequent clicks – toggle pause / play */
+    player.togglePlay().then(() => {
+      isPlaying = !isPlaying;
+      mask.classList.toggle("playing", isPlaying);
+      mask.classList.toggle("paused",  !isPlaying);
+    }).catch(console.error);
+  }
+};
   </script>
   
 </body>

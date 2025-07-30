@@ -31,25 +31,9 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
 USER_ID = sp.current_user()['id']
 
 # ---------- SECTION 3 : Track → Playlist cache ----------
-CACHE_FILE = "playlist_cache.json"
-pl_cache = json.load(open(CACHE_FILE)) if os.path.exists(CACHE_FILE) else {}
+# removed the need to create playlists by going to SDK mode
 
-def get_embed_url(track_id: str) -> str:
-    """Return a playlist embed URL (square art) for the given track ID."""
-    if track_id not in pl_cache:
-        # Create private 1‑track playlist once
-        playlist = sp.user_playlist_create(
-            user=USER_ID,
-            name=f"HITSTER_CARD_{track_id[:6]}",
-            public=False,
-            description="Auto playlist for Hitster card")
-        sp.playlist_add_items(playlist['id'], [f"spotify:track:{track_id}"])
-        pl_cache[track_id] = playlist['id']
-        json.dump(pl_cache, open(CACHE_FILE, "w"), indent=2)
-    pl_id = pl_cache[track_id]
-    # view=coverart gives square art, theme=0 sets dark background
-    return f"https://open.spotify.com/embed/playlist/{pl_id}?view=coverart&theme=0"
-
+BASE_URL   = "https://skywisej.github.io/qr-music-card-maker/cards/html/"   # <-- moved higher in program
 # ---------- SECTION 4 : Deck settings ----------
 TRACK_IDS = [
     "3KkXRkHbMCARz0aVfEt68P",   # Sunflower
@@ -59,7 +43,7 @@ TRACK_IDS = [
     "2WfaOiMkCvy7F5fcp2zZ8L"    # Take On Me
 ]
 OUTPUT_PDF = "hitster_deck.pdf"
-BASE_URL   = "https://skywisej.github.io/qr-music-card-maker/"   # <-- Phase 4: replace with GitHub Pages URL
+
 TEMPLATE_HTML = "card-template.html"  # file you just saved
 
 # ---------- SECTION 5 : Prepare folders ----------
@@ -70,46 +54,144 @@ os.makedirs("cards/qrcodes", exist_ok=True)
 tracks = sp.tracks(TRACK_IDS)["tracks"]
 
 # ---------- SECTION 7 : Create PDF + HTML ----------
-pdf = canvas.Canvas(OUTPUT_PDF, pagesize=letter)
-W, H = letter
+# ---------- SECTION 7 : Build a 4×2 grid per sheet ----------
+from reportlab.lib.units import mm
+Y_SHIFT = 4.5 * mm     # positive nudges BACK side DOWN; tweak ± until it lines up
 
+
+COLS, ROWS      = 3, 4
+CARD_W, CARD_H  = 60*mm, 60*mm            # tweak size here
+X_START, Y_START = 15*mm, 15*mm           # page margin
+
+pdf_front = canvas.Canvas("deck_front.pdf", pagesize=letter)
+pdf_back  = canvas.Canvas("deck_back.pdf",  pagesize=letter)
+
+cells_filled = 0
 for idx, track in enumerate(tracks, start=1):
-    if track is None:               # (rare – ID unavailable in region)
-        print(f"Track {TRACK_IDS[idx-1]} unavailable; skipped.")
+    if track is None:
         continue
 
-    title   = track['name']
-    artist  = track['artists'][0]['name']
-    year    = track['album']['release_date'][:4]
-    track_id = track['id']
-    
-    # ----- HTML stub via SDK template -----
-    with open(TEMPLATE_HTML, "r", encoding="utf-8") as tpl:
-        html_stub = tpl.read().replace(
-            "SPOTIFY_TRACK_URI",
-            f"spotify:track:{track_id}"
-        )
+    title   = track["name"]
+    artist  = track["artists"][0]["name"]
+    year    = track["album"]["release_date"][:4]
+    track_id  = track["id"]
+    track_uri = f"spotify:track:{track_id}"
 
+    # 1. create HTML stub from template
     html_name = f"track{idx}.html"
+    with open(TEMPLATE_HTML, "r", encoding="utf-8") as tpl:
+        html_stub = tpl.read().replace("SPOTIFY_TRACK_URI", track_uri)
     with open(f"cards/html/{html_name}", "w", encoding="utf-8") as fh:
         fh.write(html_stub)
 
-    # ----- Generate QR -----
+
+    # 2. make QR (front)
+    #DEBUG_URL= "https://skywisej.github.io/qr-music-card-maker/cards/html/track1.html"
+    #print("DEBUG_URL:", BASE_URL + html_name)
     qr_img = qrcode.make(BASE_URL + html_name)
     qr_path = f"cards/qrcodes/{html_name.replace('.html','.png')}"
     qr_img.save(qr_path)
 
-    # ----- PDF front (QR) -----
-    pdf.drawImage(qr_path, 60, H-360, width=280, height=280)
-    pdf.showPage()
+    # 3. grid position
+    col = cells_filled % COLS
+    row = cells_filled // COLS
+    x   = X_START + col * CARD_W
+    y   = letter[1] - Y_START - (row + 1) * CARD_H
 
-    # ----- PDF back (info) -----
-    pdf.setFont("Helvetica-Bold", 16)
-    pdf.drawString(60, H-100, title)
-    pdf.setFont("Helvetica", 12)
-    pdf.drawString(60, H-130, artist)
-    pdf.drawString(60, H-150, f"Released: {year}")
-    pdf.showPage()
+    # ---- FRONT SHEET (center QR) ----
+    S = CARD_W - 20*mm                           # QR size: 10 mm margin left/right
+    x_qr = x + (CARD_W - S) / 2                  # center horizontally
+    y_qr = y + (CARD_H - S) / 2                  # center vertically
+    pdf_front.drawImage(qr_path, x_qr, y_qr,     # draw at (x_qr,y_qr)
+                        width=S, height=S)
+    pdf_front.rect(x, y, CARD_W, CARD_H, stroke=1, fill=0)  # cut guide
 
-pdf.save()
-print("Done!  Check hitster_deck.pdf and cards/ folders.")
+    # ---- BACK SHEET (mirror LEFT‑RIGHT, centered date top-half + wrapped title/artist) ----
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    import textwrap
+
+    # compute the left edge of this mirrored card
+    mirror_x = letter[0] - x - CARD_W        # flip horizontally
+    y_back   = y - Y_SHIFT                   # apply duplex correction
+    pdf_back.rect(mirror_x, y_back, CARD_W, CARD_H, stroke=1, fill=0)    # draw the card border
+
+    # helper to center text by measuring its width
+    def draw_centered(text, py, font_name, font_size):
+        pdf_back.setFont(font_name, font_size)
+        text_w = stringWidth(text, font_name, font_size)
+        px = mirror_x + (CARD_W - text_w) / 2
+        pdf_back.drawString(px, py, text)
+
+    # vertical positions (from bottom of card)
+    padding = 10 * mm
+    line_spacing = 6 * mm
+
+    # amount of vertical space between wrapped title lines
+    TITLE_LINE_SPACING = .5 * mm    # ↓ make smaller for tighter title lines
+
+    # amount of vertical space between title block and artist
+    ARTIST_GAP = 1 * mm            # ↓ make smaller for tighter title→artist
+    
+    # 1. date center in top half
+    date_font, date_size = "Helvetica-Bold", 45
+    date_y = y_back + CARD_H * 0.5 # halfway between top and midline
+    draw_centered(year, date_y, date_font, date_size)
+
+    #vertical baseline for the block below date
+    block_top = date_y - date_size/2 -(5*mm)
+    
+    # 2. TITLE — wrap if needed, two lines max
+    title_font, title_size = "Helvetica-Bold", 12
+    max_width = CARD_W - 10*mm  # allow 5 mm margin each side
+    
+    # wrap on word boundaries to fit the max_width
+    wrapped = textwrap.wrap(title, 
+        width=100,  # a rough character count; we'll filter by actual width next
+    )
+    # refine by actual string width
+    lines = []
+    for line in wrapped:
+        if stringWidth(line, title_font, title_size) <= max_width:
+            lines.append(line)
+        else:
+            # further break very long single words
+            words = textwrap.wrap(line, width=int(len(line) * max_width / stringWidth(line, title_font, title_size)))
+            lines.extend(words)
+
+    # take at most 2 lines
+    lines = lines[:2]
+
+    # draw each title line
+    for i, txt in enumerate(lines):
+        py = block_top - i * (title_size + TITLE_LINE_SPACING)
+        draw_centered(txt, py, title_font, title_size)
+
+    # 3. ARTIST — below the title lines
+    artist_font, artist_size = "Helvetica", 10
+    artist_y = block_top - len(lines) * (title_size + TITLE_LINE_SPACING) - ARTIST_GAP
+    draw_centered(artist, artist_y, artist_font, artist_size)
+
+    cells_filled += 1
+    if cells_filled == COLS * ROWS:
+        pdf_front.showPage()
+        pdf_back.showPage()
+        cells_filled = 0
+
+pdf_front.save()
+pdf_back.save()
+# --- Combine front & back into one duplex‑ready PDF ---
+from PyPDF2 import PdfReader, PdfWriter
+
+out = PdfWriter()
+front_pages = PdfReader("deck_front.pdf").pages
+back_pages  = PdfReader("deck_back.pdf").pages
+
+for f, b in zip(front_pages, back_pages):
+    out.add_page(f)
+    out.add_page(b)
+
+with open("deck_duplex.pdf", "wb") as fh:
+    out.write(fh)
+#print("Created deck_front.pdf and deck_back.pdf (4×2 grid)")
+print("Created deck_duplex.pdf – front/back interleaved")
+#print("Done!  Check hitster_deck.pdf and cards/ folders.")
