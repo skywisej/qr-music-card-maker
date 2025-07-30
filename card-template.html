@@ -39,6 +39,7 @@
     transform:translate(40%,-50%);     /* right bar */
   }   
 </style>
+<script src="https://cdn.jsdeliver.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 </head>
 <body>
 <div id="mask">
@@ -53,93 +54,151 @@
   </span>
 </div>
 
-<script>
-  const trackUri = "SPOTIFY_TRACK_URI";          // replaced by Python
-  const token    = localStorage.getItem("hitster_token");
-  
-  function requireToken(){
-  /* If no token (or removed after 401) redirect to login.html */
-    if (!localStorage.getItem("hitster_token")){
-      localStorage.setItem("after_auth", location.pathname);
-      location.href = location.origin + "/qr-music-card-maker/login.html";
-      throw "Redirecting to login…";
-    }
-  }
-requireToken();
+<!-- Scan Next button -->
+<button id="scanBtn"
+        style="position:absolute;bottom:8%;right:8%;
+               padding:14px 20px;border-radius:50px;
+               background:#1db954;color:#fff;font:16px Helvetica;
+               border:none;cursor:pointer;display:none;">
+  Scan Next
+</button>
 
-  if (!token){
-    // save the path we actually wanted
+<!-- Camera overlay -->
+<div id="overlay" style="display:none;position:fixed;inset:0;
+      background:rgba(0,0,0,0.9);z-index:999;
+      align-items:center;justify-content:center;">
+  <video id="video" playsinline style="width:90%;max-width:420px;"></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <p style="color:#fff;font:18px Helvetica;margin-top:12px;">Point at next card…</p>
+</div>
+
+<script>
+/* ------- CONSTANTS / HELPERS ------- */
+const trackUri = "SPOTIFY_TRACK_URI";               // replaced by Python
+function requireToken(){
+  const t = localStorage.getItem("hitster_token");
+  if (!t){
     localStorage.setItem("after_auth", location.pathname);
     location.href = location.origin + "/qr-music-card-maker/login.html";
+    throw "Redirect to login";
   }
-  
-  let player, deviceId = null;
-  let hasStarted = false;     // did we already send the first play?
-  let isPlaying  = false;     // current state
-  
-  window.onSpotifyWebPlaybackSDKReady = () => {
-    player = new Spotify.Player({
-      name: 'Hitster Deck',
-      volume: 0.8,
-      getOAuthToken: cb => cb(token)
-    });
-  
-    player.addListener('ready', ({ device_id }) => deviceId = device_id);
-    player.addListener('player_state_changed', s => {
-      /* keep isPlaying in sync with SDK */
-      if (s) isPlaying = !s.paused;
-    });
-  
-    player.connect();
-  };
-  
-const mask = document.getElementById('mask');
+  return t;
+}
+const token   = requireToken();                     // make sure token exists
+
+/* ------- Spotify Web Playback SDK ------- */
+let player, deviceId = null;
+let hasStarted = false, isPlaying = false;
+window.onSpotifyWebPlaybackSDKReady = () => {
+  player = new Spotify.Player({
+    name: 'QR Music Deck',
+    volume: 0.8,
+    getOAuthToken: cb => cb(localStorage.getItem("hitster_token"))
+  });
+  player.addListener('ready',   ({ device_id }) => deviceId = device_id);
+  player.addListener('not_ready', () => deviceId = null);
+  player.addListener('player_state_changed', s => { if(s) isPlaying = !s.paused; });
+  player.connect();
+};
+
+/* ------- ELEMENTS ------- */
+const mask    = document.getElementById("mask");
+const scanBtn = document.getElementById("scanBtn");
+const overlay = document.getElementById("overlay");
+const video   = document.getElementById("video");
+const canvas  = document.getElementById("canvas");
+const ctx     = canvas.getContext("2d");
+let stream, loopId;
+
+/* ------- PLAY / PAUSE CLICK HANDLER ------- */
 mask.onclick = () => {
-  /* Safari autoplay helper: unlock audio the first time */
-  if (typeof window._autoplayUnlocked === "undefined") {
-    try {
-      const ctx = new AudioContext();
-      ctx.resume().then(() => { window._autoplayUnlocked = true; });
-    } catch {}
+  /* 1️⃣ unlock autoplay on first gesture (Safari) */
+  if(!window._autoplayUnlocked){
+    try{ new AudioContext().resume().then(()=>window._autoplayUnlocked=true);}catch{}
   }
 
-  if (!hasStarted) {
-    /* FIRST click – start track via Web API */
-    const waitForDevice = () => {
-      if (deviceId){
-        fetch("https://api.spotify.com/v1/me/player/play?device_id="+deviceId,{
-          method:"PUT",
-          headers:{
-            "Authorization":"Bearer "+token,
-            "Content-Type":"application/json"
-          },
-          body: JSON.stringify({uris:[ trackUri ]})
-        })
-        .then(r => {
-          if (r.status === 401 || r.status === 403){
-           /* Token has expired or was revoked – wipe and re‑login */
-            localStorage.removeItem("hitster_token");
-            alert("Spotify session expired – please log in again.");
-            requireToken();
-          }
-        })
-        .catch(console.error);
+  /* 2️⃣ first click on this card: start playback via Web API */
+  if(!hasStarted){
+    const start = () => {
+      if(!deviceId){ setTimeout(start,200); return; }
+
+      fetch("https://api.spotify.com/v1/me/player/play?device_id="+deviceId,{
+        method:"PUT",
+        headers:{
+          "Authorization":"Bearer "+localStorage.getItem("hitster_token"),
+          "Content-Type":"application/json"
+        },
+        body: JSON.stringify({ uris:[ trackUri ] })
+      })
+      .then(r=>{
+        if(r.status===401||r.status===403){     /* token expired */
+          localStorage.removeItem("hitster_token");
+          alert("Spotify session expired – please log in again.");
+          requireToken();                       /* redirects */
+          return;
+        }
         hasStarted = true;
         isPlaying  = true;
         mask.classList.add("playing");
-      } else { setTimeout(waitForDevice,200); }
+        scanBtn.style.display="none";
+      })
+      .catch(console.error);
     };
-    waitForDevice();
-  } else {
-    /* Subsequent clicks – toggle pause / play */
-    player.togglePlay().then(() => {
-      isPlaying = !isPlaying;
-      mask.classList.toggle("playing", isPlaying);
-      mask.classList.toggle("paused",  !isPlaying);
-    }).catch(console.error);
+    start();
+    return;
   }
+
+  /* 3️⃣ toggle pause / play after first start */
+  player.togglePlay().then(()=>{
+    isPlaying = !isPlaying;
+    mask.classList.toggle("playing", isPlaying);
+    mask.classList.toggle("paused",  !isPlaying);
+    scanBtn.style.display = isPlaying ? "none" : "block";
+  })
+  .catch(err=>{
+    if(err && err.status===401){
+      localStorage.removeItem("hitster_token");
+      alert("Spotify session expired – please log in again.");
+      requireToken();
+    }else{ console.error(err); }
+  });
 };
-  </script>
+
+/* ------- SCAN‑NEXT CAMERA OVERLAY ------- */
+scanBtn.onclick = async ()=>{
+  overlay.style.display="flex";
+  scanBtn.style.display="none";
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ video:{facingMode:"environment"} });
+  }catch(e){
+    alert("Camera access denied"); overlay.style.display="none"; return;
+  }
+  video.srcObject = stream; await video.play();
+  canvas.width  = video.videoWidth;  canvas.height = video.videoHeight;
+
+  const tick = ()=>{
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+    const qr  = jsQR(img.data, img.width, img.height);
+    if(qr){
+      cancelAnimationFrame(loopId);
+      stream.getTracks().forEach(t=>t.stop());
+      location.href = qr.data; return;
+    }
+    loopId = requestAnimationFrame(tick);
+  };
+  tick();
+};
+
+/* close overlay on tap */
+overlay.onclick = ()=>{
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  cancelAnimationFrame(loopId);
+  overlay.style.display="none";
+  scanBtn.style.display="block";
+};
+</script>
+
   
 </body>
 </html>
