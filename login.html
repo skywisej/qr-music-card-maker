@@ -33,6 +33,7 @@ document.getElementById("login").onclick = async () => {
   const challenge = base64url(digest);
 
   localStorage.setItem("hitster_verifier", verifier);
+  console.log("DEBUG saved verifier =", localStorage.getItem("hitster_verifier"));
 
   // 2. redirect to Spotify authorize
   const url = new URL("https://accounts.spotify.com/authorize");
