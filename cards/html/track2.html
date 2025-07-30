@@ -23,12 +23,19 @@
     border-bottom:50px solid transparent;}
   #mask.playing::before { 
     border-left-color:#1db954; }   /* triangle turns Spotify green while playing */
-  #mask.paused::before  { 
-    content:'';             /* ▐▐ pause icon when paused */
-    width:40px; height:40px;
-    box-shadow:13px 0 0 0 white,   /* two white bars */
-               35px 0 0 0 white;
-    border:none;}   
+/* Pause icon: two vertical bars */
+  #mask.paused::before,
+  #mask.paused::after{
+    content:'';
+    position:absolute;
+    top:50%;                       /* center vertically */
+    width:18px; height:60px;       /* bar size */
+    background:white;
+    transform:translate(-150%,-50%);   /* left bar */
+  }
+  #mask.paused::after{
+    transform:translate(50%,-50%);     /* right bar */
+  }   
 </style>
 </head>
 <body>
