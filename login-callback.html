@@ -22,24 +22,35 @@
     localStorage.removeItem("after_auth");
     location.href = next;
     
-    fetch("https://accounts.spotify.com/api/token", {
+ (async () => {
+  try {
+    const r = await fetch("https://accounts.spotify.com/api/token", {
       method: "POST",
-      headers: { "Content-Type":"application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json"        // <- helps CORS edge‑cases
+      },
       body: data
-    })
-    .then(async r => {
-      const txt = await r.text(); // read raw text
-      console.log("TOKEN STATUS", r.status, "RAW BODY:", txt);
-      try { return JSON.parse(txt); }   // continue as before
-      catch { return {}; }
-    })  
-    .then(js => {
-      if (js.access_token){
-        localStorage.setItem("hitster_token", js.access_token);
-        location.href = "cards/html/track1.html";        // start deck
-      }else{
-        document.body.textContent = "Token exchange failed.";
-      }
     });
+
+    const raw = await r.text();
+    console.log("TOKEN STATUS", r.status, "RAW BODY:", raw);
+
+    if (!r.ok) throw new Error("token fetch " + r.status);
+
+    const js = JSON.parse(raw);
+    localStorage.setItem("hitster_token", js.access_token);
+
+    const next = localStorage.getItem("after_auth")
+               || "/qr-music-card-maker/cards/html/track1.html";
+    localStorage.removeItem("after_auth");
+    location.href = next;
+
+  } catch (e) {
+    console.error("TOKEN EXCHANGE FAILED:", e);
+    document.body.textContent = "Token exchange failed (see console).";
+  }
+})();
+
     </script></body></html>
     
