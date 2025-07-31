@@ -18,9 +18,9 @@
     content:'';
     width:0;
     height:0;
-    border-left:80px solid white;
-    border-top:50px solid transparent;
-    border-bottom:50px solid transparent;}
+    border-left:110px solid white;
+    border-top:70px solid transparent;
+    border-bottom:70px solid transparent;}
   #mask.playing::before { 
     border-left-color:#1db954; }   /* triangle turns Spotify green while playing */
 /* Pause icon: two vertical bars */
@@ -29,8 +29,8 @@
     content:'';
     position:absolute;
     top:50%;                       /* center vertically */
-    width:22px;        /* bar width */
-    height:80px;       /* bar height */
+    width:30px;        /* bar width */
+    height:90px;       /* bar height */
     background:white;
     border:none;      /* kill the old triangle border */
     transform:translate(-140%,-50%);   /* left bar */
@@ -56,10 +56,19 @@
 
 <!-- Scan Next button -->
 <button id="scanBtn"
-        style="position:absolute;bottom:8%;right:8%;
-               padding:14px 20px;border-radius:50px;
-               background:#1db954;color:#fff;font:16px Helvetica;
-               border:none;cursor:pointer;display:none;">
+        style="
+        position:absolute;
+        bottom:6%;
+        right:6%;
+        padding:18px 26px;
+        border-radius:50px;
+        background:#1db954;
+        color:#fff;
+        font:16px Helvetica;
+        font-size: 1.4rem;
+        border:none;
+        cursor:pointer;
+        display:none;">
   Scan Next
 </button>
 
@@ -75,16 +84,30 @@
 <script>
 /* ------- CONSTANTS / HELPERS ------- */
 const trackUri = "spotify:track:7qiZfU4dY1lWllzX7mPBI3";               // replaced by Python
+/* ---------- TOKEN HANDLING ---------- */
+const TOKEN_KEY   = "hitster_token";
+const TOKEN_TIME  = "hitster_token_ts";
+
+/* helper */
+function needNewToken(){
+  const ts = +localStorage.getItem(TOKEN_TIME) || 0;
+  return (Date.now() - ts) > 50*60*1000;   // > 50 min
+}
+function storeToken(tok){
+  localStorage.setItem(TOKEN_KEY, tok);
+  localStorage.setItem(TOKEN_TIME, Date.now());
+}
 function requireToken(){
-  const t = localStorage.getItem("hitster_token");
-  if (!t){
+  const t = localStorage.getItem(TOKEN_KEY);
+  if (!t || needNewToken()){
+    localStorage.removeItem(TOKEN_KEY);    // drop old/absent token
     localStorage.setItem("after_auth", location.pathname);
     location.href = location.origin + "/qr-music-card-maker/login.html";
-    throw "Redirect to login";
+    throw "Redirect";
   }
   return t;
 }
-const token   = requireToken();                     // make sure token exists
+const token = requireToken();              // ← replaces the old lookup
 
 /* ------- Spotify Web Playback SDK ------- */
 let player, deviceId = null;
@@ -178,6 +201,12 @@ scanBtn.onclick = async ()=>{
 
   const tick = ()=>{
     ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    // down-scale for faster decode & improve contrast
+    const scale = 0.5;
+    const sw = canvas.width  * scale, sh = canvas.height * scale;
+    const tmp = ctx.getImageData(0,0,sw,sh).data;
+    const code = jsQR(tmp, sw, sh, { inversionAttempts:"attemptBoth" });
+
     const img = ctx.getImageData(0,0,canvas.width,canvas.height);
     const qr  = jsQR(img.data, img.width, img.height);
     if(qr){

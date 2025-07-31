@@ -1,12 +1,10 @@
 <!DOCTYPE html><html><body style="background:black;color:white;"><pre id="log"></pre>
 <script>
 const log = (...msg) => document.getElementById("log").textContent += msg.join(" ")+"\n";
-
 log("callback start");
 
 const code     = new URLSearchParams(location.search).get("code");
 const verifier = localStorage.getItem("hitster_verifier");
-
 log("code present?", !!code, "verifier present?", !!verifier);
 
 if (!code || !verifier){
@@ -23,6 +21,11 @@ const data = new URLSearchParams({
   code_verifier: verifier
 });
 
+function storeToken(tok){
+  localStorage.setItem("hitster_token", tok);
+  localStorage.setItem("hitster_token_ts", Date.now());
+}
+
 (async () => {
 try{
   const r   = await fetch("https://accounts.spotify.com/api/token", {
@@ -38,7 +41,7 @@ try{
   if(!r.ok) throw new Error("token fetch "+r.status);
 
   const js = JSON.parse(raw);
-  localStorage.setItem("hitster_token", js.access_token);
+  storeToken(js.access_token);
   const next = localStorage.getItem("after_auth")
              || "/qr-music-card-maker/cards/html/track1.html";
   localStorage.removeItem("after_auth");
