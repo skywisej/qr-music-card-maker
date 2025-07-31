@@ -199,23 +199,26 @@ scanBtn.onclick = async ()=>{
   video.srcObject = stream; await video.play();
   canvas.width  = video.videoWidth;  canvas.height = video.videoHeight;
 
-  const tick = ()=>{
-    ctx.drawImage(video,0,0,canvas.width,canvas.height);
-    // down-scale for faster decode & improve contrast
-    const scale = 0.5;
-    const sw = canvas.width  * scale, sh = canvas.height * scale;
-    const tmp = ctx.getImageData(0,0,sw,sh).data;
-    const code = jsQR(tmp, sw, sh, { inversionAttempts:"attemptBoth" });
+const tick = () => {
+  /* draw the live frame */
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const img = ctx.getImageData(0,0,canvas.width,canvas.height);
-    const qr  = jsQR(img.data, img.width, img.height);
-    if(qr){
-      cancelAnimationFrame(loopId);
-      stream.getTracks().forEach(t=>t.stop());
-      location.href = qr.data; return;
-    }
-    loopId = requestAnimationFrame(tick);
-  };
+  /* down-scale for speed and try both polarities */
+  const scale = 0.6;                     // 60 % of full frame
+  const w = canvas.width  * scale;
+  const h = canvas.height * scale;
+  const frame = ctx.getImageData(0, 0, w, h);
+  const qr   = jsQR(frame.data, w, h, { inversionAttempts: "attemptBoth" });
+
+  if (qr) {
+    /* >>> FOUND a QR code <<< */
+    cancelAnimationFrame(loopId);
+    stream.getTracks().forEach(t => t.stop());
+    location.href = qr.data;             // go to the next track page
+    return;
+  }
+  loopId = requestAnimationFrame(tick);  // continue scanning
+};
   tick();
 };
 
