@@ -44,7 +44,7 @@ TRACK_IDS = [
 ]
 OUTPUT_PDF = "hitster_deck.pdf"
 
-TEMPLATE_HTML = "card-template.html"  # file you just saved
+TEMPLATE_HTML = "card-template-v3.html"  # file you just saved
 
 # ---------- SECTION 5 : Prepare folders ----------
 os.makedirs("cards/html", exist_ok=True)
