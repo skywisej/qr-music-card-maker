@@ -15,6 +15,7 @@ from spotipy.oauth2 import SpotifyOAuth
 import qrcode
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from pathlib import Path
 
 # ---------- SECTION 1 : Credentials ----------
 CLIENT_ID     = os.getenv("SPOTIPY_CLIENT_ID")
@@ -44,7 +45,8 @@ TRACK_IDS = [
 ]
 OUTPUT_PDF = "hitster_deck.pdf"
 
-TEMPLATE_HTML = "card-template-v3.html"  # file you just saved
+TEMPLATE_HTML = Path("card-template-v3.html")  # file you actually open
+VERSION_TAG = 'v4' # bump to bust cache
 
 # ---------- SECTION 5 : Prepare folders ----------
 os.makedirs("cards/html", exist_ok=True)
@@ -88,7 +90,7 @@ for idx, track in enumerate(tracks, start=1):
     # 2. make QR (front)
     #DEBUG_URL= "https://skywisej.github.io/qr-music-card-maker/cards/html/track1.html"
     #print("DEBUG_URL:", BASE_URL + html_name)
-    qr_img = qrcode.make(BASE_URL + html_name)
+    qr_img = qrcode.make(f"{BASE_URL}{html_name}?v={VERSION_TAG}")
     qr_path = f"cards/qrcodes/{html_name.replace('.html','.png')}"
     qr_img.save(qr_path)
 
