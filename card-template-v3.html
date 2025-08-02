@@ -189,6 +189,20 @@
           body: JSON.stringify({ uris: [ trackUri ] })
         })
         .then(async r => {
+          if (r.status === 403) {
+            const body = await r.json().catch(()=>({}));
+            dbg("HTTP 403 • msg=" + (body.error?.message || "n/a"));
+
+            // 🔍 call /v1/me to see the product type
+            fetch("https://api.spotify.com/v1/me", {
+              headers: { "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY) }
+            })
+            .then(res => res.json())
+            .then(me => dbg("User: " + me.display_name + " • product=" + me.product));
+
+            setTimeout(()=>scanBtn.style.display="none", 8000);   // keep it visible 8 s
+            return;
+}
           if (r.status === 401) {
             dbg("HTTP 401");          
             alert("401 Unauthorized → token really expired; re-logging in 4 s...");
