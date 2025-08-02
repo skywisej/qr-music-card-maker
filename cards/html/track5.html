@@ -94,10 +94,11 @@
         position:fixed;top:0;left:0;
         background:rgba(0,0,0,.7);color:#0f0;
         font-size:14px;padding:6px 8px;
-        z-index:10000;white-space:pre-wrap;margin:0;"></pre>
+        z-index:10000;white-space:pre-wrap;margin:0;">
+  </pre>
 
   <!-- jsQR (correct CDN) -->
-  <script src="qr-music-card-maker/js/jsQR.js?v=r"></script>
+  <script src="/qr-music-card-maker/js/jsQR.js?v=v5"></script>
 
   <script>
   /* -------------------------------------------------
@@ -106,7 +107,7 @@
   const trackUri   = "spotify:track:2WfaOiMkCvy7F5fcp2zZ8L";   // replaced by Python
   const TOKEN_KEY  = "hitster_token";
   const TOKEN_TIME = "hitster_token_ts";
-  const VERSION_TAG  = "v5";       // bump this when you push a new build
+  const VERSION_TAG  = "v6";       // bump this when you push a new build
 
   const dbg = txt => { document.getElementById('dbg').textContent = txt || ''; };
 
@@ -166,8 +167,8 @@
   const ctx     = canvas.getContext("2d");
   let stream = null, rafId = null;
 
-  /* -------------------------------------------------
-   PLAY / PAUSE (main triangle)
+    /* -------------------------------------------------
+     PLAY / PAUSE (main triangle) – FIXED VERSION
   -------------------------------------------------- */
   mask.onclick = () => {
     /* 1️⃣ unlock autoplay on first gesture (iOS) */
@@ -180,74 +181,59 @@
       const start = () => {
         if (!deviceId) { setTimeout(start, 200); return; }
 
+        /* ---------- attempt to start playback ---------- */
         fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-          method: "PUT",
+          method : "PUT",
           headers: {
             "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY),
-            "Content-Type": "application/json"
+            "Content-Type" : "application/json"
           },
           body: JSON.stringify({ uris: [ trackUri ] })
         })
         .then(async r => {
+          /* ---------- 401 UNAUTHORIZED ---------- */
+          if (r.status === 401) {
+            dbg("HTTP 401 – token expired");
+            alert("401: token expired; re-logging in 4 s");
+            setTimeout(requireToken, 4000);
+            return;
+          }
+
+          /* ---------- 403 FORBIDDEN ---------- */
           if (r.status === 403) {
             const body = await r.json().catch(()=>({}));
-            dbg("HTTP 403 • msg=" + (body.error?.message || "n/a"));
+            dbg("HTTP 403 – " + (body?.error?.message || "no msg"));
 
-            // 🔍 call /v1/me to see the product type
-           /* ---------- attempt to start playback ---------- */
-      fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-        method : "PUT",
-        headers: {
-          "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY),
-          "Content-Type" : "application/json"
-        },
-        body: JSON.stringify({ uris: [ trackUri ] })
-      })
-      .then(async r => {
-        /* ---------- 401 UNAUTHORIZED ---------- */
-        if (r.status === 401) {
-          dbg("HTTP 401 – token expired");
-          alert("401: token really expired ➜ re-logging in 4 s");
-          setTimeout(requireToken, 4000);
-          return;
-        }
+            /* ask Spotify who this token belongs to */
+            fetch("https://api.spotify.com/v1/me", {
+              headers: { "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY) }
+            })
+            .then(res => res.json())
+            .then(me => dbg(
+              `HTTP 403 – ${body?.error?.message || ""}\n` +
+              `User: ${me.display_name || "?"}\n` +
+              `product: ${me.product || "?"}`))
+            .catch(e => dbg("Extra /me fetch failed: " + e));
 
-        /* ---------- 403 FORBIDDEN ---------- */
-        if (r.status === 403) {
-          const body = await r.json().catch(()=>({}));
-          dbg("HTTP 403 – " + (body?.error?.message || "no msg"));
+            setTimeout(()=>scanBtn.style.display="none", 8000);
+            return;
+          }
 
-          /* ask Spotify who *this* token belongs to */
-          fetch("https://api.spotify.com/v1/me", {
-            headers: { "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY) }
-          })
-          .then(res => res.json())
-          .then(me => {
-            dbg(`HTTP 403 – ${body?.error?.message || ""}\n` +
-                `User: ${me.display_name || "?"}\n` +
-                `product: ${me.product || "?"}`);
-          })
-          .catch(e => dbg("Extra /me fetch failed: " + e));
+          /* ---------- anything but success ---------- */
+          if (r.status !== 204) {
+            const txt = await r.text().catch(()=>"(body read err)");
+            dbg("HTTP " + r.status + "\n" + txt.slice(0,120));
+            alert("Unexpected status " + r.status + " – see green text.");
+            return;
+          }
 
-          /* leave overlay up 8 s so you can read it */
-          setTimeout(()=>scanBtn.style.display="none", 8000);
-          return;
-        }
-
-        /* ---------- anything else but success ---------- */
-        if (r.status !== 204) {
-          const txt = await r.text().catch(()=>"(body read err)");
-          dbg("HTTP " + r.status + "\n" + txt.slice(0,120));
-          alert("Unexpected status " + r.status + " – see green text.");
-          return;
-        }
-
-        /* ---------- SUCCESS (204) ---------- */
-        hasStarted = true;
-        isPlaying  = true;
-        mask.classList.add("playing");
-        scanBtn.style.display = "none";
-      });
+          /* ---------- SUCCESS (204) ---------- */
+          hasStarted = true;
+          isPlaying  = true;
+          mask.classList.add("playing");
+          scanBtn.style.display = "none";
+        });
+      };
       start();
       return;
     }
@@ -267,6 +253,7 @@
       } else { console.error(err); }
     });
   };
+
 
   /* -------------------------------------------------
    SCAN-NEXT OVERLAY
