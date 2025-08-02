@@ -97,7 +97,7 @@
         z-index:10000;white-space:pre-wrap;margin:0;"></pre>
 
   <!-- jsQR (correct CDN) -->
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="qr-music-card-maker/js/jsQR.js?v=r"></script>
 
   <script>
   /* -------------------------------------------------
@@ -106,7 +106,7 @@
   const trackUri   = "spotify:track:5Z01UMMf7V1o0MzF86s6WJ";   // replaced by Python
   const TOKEN_KEY  = "hitster_token";
   const TOKEN_TIME = "hitster_token_ts";
-  const VERSION_TAG  = "v4";       // bump this when you push a new build
+  const VERSION_TAG  = "v5";       // bump this when you push a new build
 
   const dbg = txt => { document.getElementById('dbg').textContent = txt || ''; };
 
@@ -189,33 +189,65 @@
           body: JSON.stringify({ uris: [ trackUri ] })
         })
         .then(async r => {
-          if (r.status === 401) {
-            dbg("HTTP 401");          
-            alert("401 Unauthorized → token really expired; re-logging in 4 s...");
-            localStorage.removeItem(TOKEN_KEY);
-            setTimeout(requireToken, 4000);                            // redirects
-            return;
-          }
           if (r.status === 403) {
-            dbg("HTTP 403"); 
-            alert("403 Forbidden → Spotify won't start playback. Pausing 4 s...");
-            setTimeout(()=>scanBtn.style.display="none", 4000);;           // stop the loop
-            return;
-          }
-          if (r.status !== 204) {
-            dbg("HTTP " + r.status);
-            const txt = await r.text();
-            alert(`Unexpected status ${r.status}\n${txt.slice(0,120)}`);
-            return;
-          }
-          /* 204 No-Content → success */
-          hasStarted = true;
-          isPlaying  = true;
-          mask.classList.add("playing");
-          scanBtn.style.display = "none";
-        })
-        .catch(console.error);
-      };
+            const body = await r.json().catch(()=>({}));
+            dbg("HTTP 403 • msg=" + (body.error?.message || "n/a"));
+
+            // 🔍 call /v1/me to see the product type
+           /* ---------- attempt to start playback ---------- */
+      fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+        method : "PUT",
+        headers: {
+          "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY),
+          "Content-Type" : "application/json"
+        },
+        body: JSON.stringify({ uris: [ trackUri ] })
+      })
+      .then(async r => {
+        /* ---------- 401 UNAUTHORIZED ---------- */
+        if (r.status === 401) {
+          dbg("HTTP 401 – token expired");
+          alert("401: token really expired ➜ re-logging in 4 s");
+          setTimeout(requireToken, 4000);
+          return;
+        }
+
+        /* ---------- 403 FORBIDDEN ---------- */
+        if (r.status === 403) {
+          const body = await r.json().catch(()=>({}));
+          dbg("HTTP 403 – " + (body?.error?.message || "no msg"));
+
+          /* ask Spotify who *this* token belongs to */
+          fetch("https://api.spotify.com/v1/me", {
+            headers: { "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY) }
+          })
+          .then(res => res.json())
+          .then(me => {
+            dbg(`HTTP 403 – ${body?.error?.message || ""}\n` +
+                `User: ${me.display_name || "?"}\n` +
+                `product: ${me.product || "?"}`);
+          })
+          .catch(e => dbg("Extra /me fetch failed: " + e));
+
+          /* leave overlay up 8 s so you can read it */
+          setTimeout(()=>scanBtn.style.display="none", 8000);
+          return;
+        }
+
+        /* ---------- anything else but success ---------- */
+        if (r.status !== 204) {
+          const txt = await r.text().catch(()=>"(body read err)");
+          dbg("HTTP " + r.status + "\n" + txt.slice(0,120));
+          alert("Unexpected status " + r.status + " – see green text.");
+          return;
+        }
+
+        /* ---------- SUCCESS (204) ---------- */
+        hasStarted = true;
+        isPlaying  = true;
+        mask.classList.add("playing");
+        scanBtn.style.display = "none";
+      });
       start();
       return;
     }
