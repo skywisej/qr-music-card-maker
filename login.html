@@ -15,8 +15,15 @@
 
 <script>
 const CLIENT_ID = "f373adfc90734648bd432988e370ab64";   // ← copy from dashboard
-const REDIRECT  = "https://skywisej.github.io/qr-music-card-maker/login-callback.html";
-const SCOPES    = "streaming user-read-email user-modify-playback-state";
+const REDIRECT_URI  = "https://skywisej.github.io/qr-music-card-maker/login-callback.html";
+const SCOPES = [
+  "streaming",
+  "user-read-email",
+  "user-read-private",
+  "user-modify-playback-state",
+  "user-read-playback-state"
+].join(" ");
+const STATE      = Math.random().toString(36).slice(2);   // random string to guard against CSRF
 
 function base64url(buf){
   return btoa(String.fromCharCode(...new Uint8Array(buf)))
@@ -31,17 +38,17 @@ document.getElementById("login").onclick = async () => {
   const challenge = base64url(hash);
 
   localStorage.setItem("hitster_verifier", verifier);
-  console.log("DEBUG saved verifier =", verifier);
 
   const url = new URL("https://accounts.spotify.com/authorize");
   url.searchParams.set("client_id", CLIENT_ID);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("redirect_uri", REDIRECT);
+  url.searchParams.set("redirect_uri", REDIRECT_URI);
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("scope", SCOPES);
+  url.searchParams.set("state", STATE);
 
-  location.href = url;
+  location.href = url.toString();
 };
 </script>
 </body></html>
