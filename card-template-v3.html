@@ -191,16 +191,15 @@
         .then(async r => {
           if (r.status === 401) {
             dbg("HTTP 401");          
-            alert("401 Unauthorized → token really expired; re-logging");
+            alert("401 Unauthorized → token really expired; re-logging in 4 s...");
             localStorage.removeItem(TOKEN_KEY);
-            requireToken();                            // redirects
+            setTimeout(requireToken, 4000);                            // redirects
             return;
           }
           if (r.status === 403) {
             dbg("HTTP 403"); 
-            alert("403 Forbidden → Spotify says this account can’t start playback.\n" +
-                  "Is it definitely Premium? Does it own the track’s region?");
-            scanBtn.style.display = "none";           // stop the loop
+            alert("403 Forbidden → Spotify won't start playback. Pausing 4 s...");
+            setTimeout(()=>scanBtn.style.display="none", 4000);;           // stop the loop
             return;
           }
           if (r.status !== 204) {
