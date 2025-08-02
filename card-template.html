@@ -100,39 +100,46 @@
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
   <script>
-  /* ================== CONSTANTS / HELPERS ================== */
+  /* -------------------------------------------------
+   CONSTANTS / HELPERS
+  -------------------------------------------------- */
   const trackUri   = "SPOTIFY_TRACK_URI";   // replaced by Python
   const TOKEN_KEY  = "hitster_token";
   const TOKEN_TIME = "hitster_token_ts";
+  const VERSION_TAG  = "v3";       // bump this when you push a new build
 
   const dbg = txt => { document.getElementById('dbg').textContent = txt || ''; };
 
-  // Prefix origin if the QR contains only a relative path
-  const absoluteURL = data => data && data.startsWith('http')
-      ? data
-      : `${location.origin}/${String(data || '').replace(/^\//,'')}`;
+  /* Convert relative URLs to absolute + append ?v=… for cache-busting */
+  function absoluteURL (data) {
+    if (!data) return "";
+    let url = data.startsWith("http")
+              ? data  
+              : `${location.origin}/${data.replace(/^\//, "")}`;
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}${VERSION_TAG}`;
+  }            
 
+  /* Token helpers */
   function needNewToken(){
     const ts = +localStorage.getItem(TOKEN_TIME) || 0;
     return (Date.now() - ts) > 50*60*1000;   // > 50 min
   }
-  function storeToken(tok){
-    localStorage.setItem(TOKEN_KEY, tok);
-    localStorage.setItem(TOKEN_TIME, Date.now());
-  }
-  function requireToken(){
-    const t = localStorage.getItem(TOKEN_KEY);
-    if (!t || needNewToken()){
+  function requireToken () {
+    const tok = localStorage.getItem(TOKEN_KEY);
+    if (!tok || needNewToken()) {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.setItem("after_auth", location.pathname + location.search);
       location.href = location.origin + "/qr-music-card-maker/login.html";
-      throw "Redirect";
+      throw "Redirect to login";
     }
-    return t;
+    return tok;
   }
   const token = requireToken();
 
-  /* ============== Spotify Web Playback SDK ================= */
+  /* -------------------------------------------------
+   Spotify Web Playback SDK setup
+  -------------------------------------------------- */
   let player, deviceId = null;
   let hasStarted = false, isPlaying = false;
 
@@ -148,7 +155,9 @@
     player.connect();
   };
 
-  /* =================== ELEMENT HANDLES ===================== */
+  /* -------------------------------------------------
+   ELEMENT HANDLES
+  -------------------------------------------------- */
   const mask    = document.getElementById("mask");
   const scanBtn = document.getElementById("scanBtn");
   const overlay = document.getElementById("overlay");
@@ -157,19 +166,21 @@
   const ctx     = canvas.getContext("2d");
   let stream = null, rafId = null;
 
-  /* =================== PLAY / PAUSE ======================== */
+  /* -------------------------------------------------
+   PLAY / PAUSE (main triangle)
+  -------------------------------------------------- */
   mask.onclick = () => {
-    // 1) Unlock autoplay on first gesture (iOS Safari)
+    /* 1️⃣ unlock autoplay on first gesture (iOS) */
     if (!window._autoplayUnlocked) {
       try { new AudioContext().resume().then(() => window._autoplayUnlocked = true); } catch {}
     }
 
-    // 2) First click: start playback via Web API
+    /* 2️⃣ first click → start playback via Web API */
     if (!hasStarted) {
       const start = () => {
         if (!deviceId) { setTimeout(start, 200); return; }
 
-        fetch("https://api.spotify.com/v1/me/player/play?device_id=" + deviceId, {
+        fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
           method: "PUT",
           headers: {
             "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY),
@@ -195,7 +206,7 @@
       return;
     }
 
-    // 3) Toggle pause/play after started
+    /* 3️⃣ subsequent clicks → toggle pause/play */
     player.togglePlay().then(() => {
       isPlaying = !isPlaying;
       mask.classList.toggle("playing", isPlaying);
@@ -211,7 +222,9 @@
     });
   };
 
-  /* ================== SCAN-NEXT (OVERLAY) ================== */
+  /* -------------------------------------------------
+   SCAN-NEXT OVERLAY
+  -------------------------------------------------- */
   scanBtn.onclick = async () => {
     overlay.style.display = "flex";
     scanBtn.style.display = "none";
@@ -235,37 +248,36 @@
 
     videoEl.srcObject = stream;
     await videoEl.play();
+    dbg(`Camera ready (${videoEl.videoWidth}×${videoEl.videoHeight}). Scanning…`);
 
     function tick() {
-      // Keep canvas matched to actual video size
+      // live heartbeat so you know we’re looping
+      dbg(`Scanning… ${Date.now().toString().slice(-4)}`);
+
       const vw = videoEl.videoWidth  || 640;
       const vh = videoEl.videoHeight || 480;
       canvas.width  = vw;
       canvas.height = vh;
 
-      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(videoEl, 0, 0, vw, vh);
 
-      // Attempt decode (full frame for reliability)
-      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const img = ctx.getImageData(0, 0, vw, vh);
       const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "attemptBoth" });
 
       if (code) {
-        // Found a QR code
         const raw = code.data || "";
         const dest = absoluteURL(raw);
-        dbg("QR decoded:\n" + raw + "\n→ Navigating…");
+        dbg("QR decoded:\n" + raw);
         stopStream();
-        location.href = dest;
+        location.href = dest;   // jump to the next card
         return;
       }
-
       rafId = requestAnimationFrame(tick);
     }
-
     tick();
   };
 
-  // Close overlay on tap (and stop camera)
+  /* close overlay on tap */
   overlay.onclick = () => {
     stopStream();
     overlay.style.display = "none";
@@ -273,6 +285,7 @@
     dbg("");
   };
 
+  /* helper to stop camera & loop */
   function stopStream() {
     if (rafId) cancelAnimationFrame(rafId), rafId = null;
     if (stream) {
