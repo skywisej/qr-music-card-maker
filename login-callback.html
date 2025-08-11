@@ -2,54 +2,56 @@
 <script>
 const log = (...msg) => document.getElementById("log").textContent += msg.join(" ")+"\n";
 log("callback start");
-
-const code     = new URLSearchParams(location.search).get("code");
+const qp       = new URLSearchParams(location.search);
+const code     = qp.get("code");
+const state    = qp.get("state");
+const expect   = localStorage.getItem("hitster_state");
 const verifier = localStorage.getItem("hitster_verifier");
-log("code present?", !!code, "verifier present?", !!verifier);
-
-if (!code || !verifier){
-  log("Missing code or verifier – reload login");
+log("code?", !!code, "state ok?", state===expect, "verifier?", !!verifier);
+if (!code || !verifier || state !== expect){
+  log("Missing/invalid code or state – reload login");
   location.href = "/qr-music-card-maker/login.html";
   throw "";
 }
-
 const data = new URLSearchParams({
   grant_type:    "authorization_code",
-  client_id:     "f373adfc90734648bd432988e370ab64",   // same ID
+  client_id:     "f373adfc90734648bd432988e370ab64",
   code,
   redirect_uri:  "https://skywisej.github.io/qr-music-card-maker/login-callback.html",
   code_verifier: verifier
 });
-
 function storeToken(tok){
   localStorage.setItem("hitster_token", tok);
   localStorage.setItem("hitster_token_ts", Date.now());
 }
-
 (async () => {
 try{
   const r   = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json"          // helps CORS
+      "Accept": "application/json"
     },
     body: data
   });
   const raw = await r.text();
-  log("TOKEN STATUS", r.status, raw);
+  log("TOKEN STATUS", r.status, raw.slice(0,200));
   if(!r.ok) throw new Error("token fetch "+r.status);
-
   const js = JSON.parse(raw);
   storeToken(js.access_token);
-  const next = localStorage.getItem("after_auth")
-             || "/qr-music-card-maker/cards/html/track1.html";
+  try{
+    const me = await fetch("https://api.spotify.com/v1/me", { headers: { "Authorization":"Bearer "+js.access_token } }).then(x=>x.json());
+    log("Hello", me.display_name, "product:", me.product);
+    if (me.product && me.product.toLowerCase() !== "premium"){
+      log("NOTE: Spotify Premium is required to start playback from the browser.");
+    }
+  }catch(e){}
+  const next = localStorage.getItem("after_auth") || "/qr-music-card-maker/cards/html/track1.html?v=v7";
   localStorage.removeItem("after_auth");
   location.href = next;
 }catch(e){
   log("Token exchange failed:", e);
-}})();
+}
+})();
 </script>
 </body></html>
-
-    

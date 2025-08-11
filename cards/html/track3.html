@@ -2,133 +2,71 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title></title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>QR Music Deck • Card</title>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
   <style>
-    html,body{
-      margin:0;
-      height:100%;
-      background:black;
-    }
-    #mask{
-      position:absolute;
-      inset:0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      cursor:pointer;
-    }
-    /* Play triangle */
-    #mask::before{
-      content:'';
-      width:0;
-      height:0;
-      border-left:110px solid white;
-      border-top:70px solid transparent;
-      border-bottom:70px solid transparent;
-    }
-    /* While playing, triangle goes Spotify green */
-    #mask.playing::before { 
-      border-left-color:#1db954;
-    }
-    /* Pause icon: two vertical bars */
-    #mask.paused::before,
-    #mask.paused::after{
-      content:'';
-      position:absolute;
-      top:50%;
-      width:30px;         /* bar width */
-      height:90px;        /* bar height */
-      background:white;
-      border:none;        /* remove triangle border */
-      transform:translate(-140%,-50%);   /* left bar */
-    }
-    #mask.paused::after{
-      transform:translate(40%,-50%);     /* right bar */
-    }
+    html,body{margin:0;height:100%;background:#000;touch-action:manipulation}
+    #mask{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
+    #mask::before{content:'';width:0;height:0;border-left:110px solid #fff;border-top:70px solid transparent;border-bottom:70px solid transparent}
+    #mask.playing::before{border-left-color:#1db954}
+    #mask.paused::before,#mask.paused::after{content:'';position:absolute;top:50%;width:30px;height:90px;background:#fff;border:none;transform:translate(-140%,-50%)}
+    #mask.paused::after{transform:translate(40%,-50%)}
+    #scanBtn{position:absolute;bottom:6%;right:6%;padding:18px 26px;border-radius:50px;background:#1db954;color:#fff;font:16px Helvetica;font-size:1.4rem;border:none;cursor:pointer;display:none}
+    #overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.96);z-index:999;align-items:center;justify-content:center;flex-direction:column}
+    #video{width:92vw;max-width:520px;border-radius:14px}
+    #dbg{position:fixed;top:0;left:0;background:rgba(0,0,0,.7);color:#0f0;font-size:14px;padding:6px 8px;z-index:10000;white-space:pre-wrap;margin:0;max-width:96vw}
+    #toast{position:fixed;left:50%;bottom:8%;transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:10px 18px;font:15px/1.2 Helvetica;display:none}
   </style>
 </head>
-
 <body>
   <div id="mask">
-    <span style="
-      position:absolute;
-      bottom:12%;
-      width:100%;
-      text-align:center;
-      font:16px/1.2 'Helvetica';
-      color:#ccc;">
+    <span style="position:absolute;bottom:12%;width:100%;text-align:center;font:16px/1.2 Helvetica;color:#ccc;">
       Tap anywhere to play / pause
     </span>
   </div>
+  <button id="scanBtn">Scan Next</button>
 
-  <!-- Scan Next button (shown when paused) -->
-  <button id="scanBtn"
-          style="
-          position:absolute;
-          bottom:6%;
-          right:6%;
-          padding:18px 26px;
-          border-radius:50px;
-          background:#1db954;
-          color:#fff;
-          font:16px Helvetica;
-          font-size:1.4rem;
-          border:none;
-          cursor:pointer;
-          display:none;">
-    Scan Next
-  </button>
-
-  <!-- Camera overlay (opens after tapping Scan Next) -->
-  <div id="overlay" style="display:none;position:fixed;inset:0;
-        background:rgba(0,0,0,0.9);z-index:999;
-        align-items:center;justify-content:center;flex-direction:column;">
-    <video id="video" playsinline style="width:90%;max-width:420px;"></video>
+  <div id="overlay">
+    <video id="video" playsinline></video>
     <canvas id="canvas" style="display:none;"></canvas>
-    <p style="color:#fff;font:18px Helvetica;margin-top:12px;">Point at next card… (tap anywhere to close)</p>
+    <p style="color:#fff;font:18px Helvetica;margin-top:12px;opacity:.9;">Point at next card… (tap anywhere to close)</p>
   </div>
 
-  <!-- Tiny overlay for debug text (what jsQR decoded) -->
-  <pre id="dbg" style="
-        position:fixed;top:0;left:0;
-        background:rgba(0,0,0,.7);color:#0f0;
-        font-size:14px;padding:6px 8px;
-        z-index:10000;white-space:pre-wrap;margin:0;">
-  </pre>
-
-  <!-- jsQR (correct CDN) -->
-  <script src="/qr-music-card-maker/js/jsQR.js?v=v5"></script>
+  <pre id="dbg"></pre>
+  <div id="toast"></div>
 
   <script>
-  /* -------------------------------------------------
-   CONSTANTS / HELPERS
-  -------------------------------------------------- */
-  const trackUri   = "spotify:track:4Dvkj6JhhA12EX05fT7y2e";   // replaced by Python
+    window._hitsterVersion = "v7";
+  </script>
+  <script>
+  const trackUri   = "spotify:track:4Dvkj6JhhA12EX05fT7y2e";
   const TOKEN_KEY  = "hitster_token";
   const TOKEN_TIME = "hitster_token_ts";
-  const VERSION_TAG  = "v6";       // bump this when you push a new build
+  const VERSION_TAG = window._hitsterVersion;
 
   const dbg = txt => { document.getElementById('dbg').textContent = txt || ''; };
+  const toast = (msg, ms=1800) => {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.style.display='block';
+    clearTimeout(window._toastT); window._toastT = setTimeout(()=> el.style.display='none', ms);
+  };
 
-  /* Convert relative URLs to absolute + append ?v=… for cache-busting */
-  function absoluteURL (data) {
-    if (!data) return "";
-    let url = data.startsWith("http")
-              ? data  
-              : `${location.origin}/${data.replace(/^\//, "")}`;
-    const sep = url.includes("?") ? "&" : "?";
-    return `${url}${sep}${VERSION_TAG}`;
-  }            
+  function absoluteURL(data){
+    if(!data) return "";
+    const isAbs = /^https?:\/\//i.test(data);
+    let url = isAbs ? data : `${location.origin}/${data.replace(/^\//,'')}`;
+    if(!/[?&]v=/.test(url)) { url += (url.includes('?') ? '&' : '?') + VERSION_TAG; }
+    return url;
+  }
 
-  /* Token helpers */
   function needNewToken(){
     const ts = +localStorage.getItem(TOKEN_TIME) || 0;
-    return (Date.now() - ts) > 50*60*1000;   // > 50 min
+    return (Date.now() - ts) > 50*60*1000;
   }
-  function requireToken () {
+  function requireToken(){
     const tok = localStorage.getItem(TOKEN_KEY);
-    if (!tok || needNewToken()) {
+    if(!tok || needNewToken()){
       localStorage.removeItem(TOKEN_KEY);
       localStorage.setItem("after_auth", location.pathname + location.search);
       location.href = location.origin + "/qr-music-card-maker/login.html";
@@ -138,9 +76,6 @@
   }
   const token = requireToken();
 
-  /* -------------------------------------------------
-   Spotify Web Playback SDK setup
-  -------------------------------------------------- */
   let player, deviceId = null;
   let hasStarted = false, isPlaying = false;
 
@@ -156,176 +91,135 @@
     player.connect();
   };
 
-  /* -------------------------------------------------
-   ELEMENT HANDLES
-  -------------------------------------------------- */
   const mask    = document.getElementById("mask");
   const scanBtn = document.getElementById("scanBtn");
   const overlay = document.getElementById("overlay");
   const videoEl = document.getElementById("video");
   const canvas  = document.getElementById("canvas");
   const ctx     = canvas.getContext("2d");
-  let stream = null, rafId = null;
+  let stream = null, rafId = null, detector = null;
 
-    /* -------------------------------------------------
-     PLAY / PAUSE (main triangle) – FIXED VERSION
-  -------------------------------------------------- */
+  async function ensurePremiumNotice() {
+    try {
+      const me = await fetch("https://api.spotify.com/v1/me", {
+        headers: { "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY) }
+      }).then(r=>r.json());
+      if(me && me.product && me.product.toLowerCase() !== 'premium') {
+        toast("Spotify Premium required on this account");
+      }
+    } catch(e){/* ignore */}
+  }
+  ensurePremiumNotice();
+
   mask.onclick = () => {
-    /* 1️⃣ unlock autoplay on first gesture (iOS) */
-    if (!window._autoplayUnlocked) {
-      try { new AudioContext().resume().then(() => window._autoplayUnlocked = true); } catch {}
-    }
-
-    /* 2️⃣ first click → start playback via Web API */
+    if (!window._autoplayUnlocked) { try { new AudioContext().resume().then(() => window._autoplayUnlocked = true); } catch {} }
     if (!hasStarted) {
       const start = () => {
         if (!deviceId) { setTimeout(start, 200); return; }
-
-        /* ---------- attempt to start playback ---------- */
-        fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-          method : "PUT",
-          headers: {
-            "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY),
-            "Content-Type" : "application/json"
-          },
-          body: JSON.stringify({ uris: [ trackUri ] })
-        })
-        .then(async r => {
-          /* ---------- 401 UNAUTHORIZED ---------- */
-          if (r.status === 401) {
-            dbg("HTTP 401 – token expired");
-            alert("401: token expired; re-logging in 4 s");
-            setTimeout(requireToken, 4000);
-            return;
-          }
-
-          /* ---------- 403 FORBIDDEN ---------- */
-          if (r.status === 403) {
-            const body = await r.json().catch(()=>({}));
-            dbg("HTTP 403 – " + (body?.error?.message || "no msg"));
-
-            /* ask Spotify who this token belongs to */
-            fetch("https://api.spotify.com/v1/me", {
-              headers: { "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY) }
-            })
-            .then(res => res.json())
-            .then(me => dbg(
-              `HTTP 403 – ${body?.error?.message || ""}\n` +
-              `User: ${me.display_name || "?"}\n` +
-              `product: ${me.product || "?"}`))
-            .catch(e => dbg("Extra /me fetch failed: " + e));
-
-            setTimeout(()=>scanBtn.style.display="none", 8000);
-            return;
-          }
-
-          /* ---------- anything but success ---------- */
-          if (r.status !== 204) {
-            const txt = await r.text().catch(()=>"(body read err)");
-            dbg("HTTP " + r.status + "\n" + txt.slice(0,120));
-            alert("Unexpected status " + r.status + " – see green text.");
-            return;
-          }
-
-          /* ---------- SUCCESS (204) ---------- */
-          hasStarted = true;
-          isPlaying  = true;
-          mask.classList.add("playing");
-          scanBtn.style.display = "none";
+        fetch("https://api.spotify.com/v1/me/player", {
+          method:"PUT",
+          headers:{"Authorization":"Bearer "+localStorage.getItem(TOKEN_KEY),"Content-Type":"application/json"},
+          body: JSON.stringify({ device_ids:[deviceId], play:false })
+        }).catch(()=>{}).finally(()=>{
+          fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+            method : "PUT",
+            headers: {
+              "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY),
+              "Content-Type" : "application/json"
+            },
+            body: JSON.stringify({ uris: [ trackUri ] })
+          })
+          .then(async r => {
+            if (r.status === 401) { dbg("HTTP 401 – token expired"); alert("401: token expired; re-logging in 4 s"); setTimeout(requireToken, 4000); return; }
+            if (r.status === 403) {
+              const body = await r.json().catch(()=>({}));
+              dbg("HTTP 403 – " + (body?.error?.message || "no msg"));
+              fetch("https://api.spotify.com/v1/me", { headers: { "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY) } })
+                .then(res => res.json())
+                .then(me => dbg(`HTTP 403 – ${body?.error?.message || ""}\nUser: ${me.display_name || "?"}\nproduct: ${me.product || "?"}`))
+                .catch(e => dbg("Extra /me fetch failed: " + e));
+              setTimeout(()=>scanBtn.style.display="none", 8000);
+              return;
+            }
+            if (r.status !== 204) {
+              const txt = await r.text().catch(()=>"(body read err)");
+              dbg("HTTP " + r.status + "\n" + txt.slice(0,200));
+              alert("Unexpected status " + r.status + " – see green text.");
+              return;
+            }
+            hasStarted = true; isPlaying = true; mask.classList.add("playing"); scanBtn.style.display = "none";
+          });
         });
       };
-      start();
-      return;
+      start(); return;
     }
-
-    /* 3️⃣ subsequent clicks → toggle pause/play */
     player.togglePlay().then(() => {
       isPlaying = !isPlaying;
       mask.classList.toggle("playing", isPlaying);
       mask.classList.toggle("paused",  !isPlaying);
       scanBtn.style.display = isPlaying ? "none" : "block";
-    })
-    .catch(err => {
-      if (err && err.status === 401) {
-        localStorage.removeItem(TOKEN_KEY);
-        alert("Spotify session expired – please log in again.");
-        requireToken();
-      } else { console.error(err); }
+    }).catch(err => {
+      if (err && err.status === 401) { localStorage.removeItem(TOKEN_KEY); alert("Spotify session expired – please log in again."); requireToken(); }
+      else { console.error(err); }
     });
   };
 
-
-  /* -------------------------------------------------
-   SCAN-NEXT OVERLAY
-  -------------------------------------------------- */
   scanBtn.onclick = async () => {
     overlay.style.display = "flex";
     scanBtn.style.display = "none";
     dbg("Opening camera…");
-
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width:  { ideal: 1280 },
-          height: { ideal: 720  }
-        }
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, focusMode: "continuous" },
+        audio: false
       });
     } catch (e) {
-      alert("Camera access denied");
-      overlay.style.display = "none";
-      scanBtn.style.display = "block";
-      dbg("");
-      return;
+      alert("Camera access denied"); overlay.style.display = "none"; scanBtn.style.display = "block"; dbg(""); return;
     }
-
     videoEl.srcObject = stream;
     await videoEl.play();
     dbg(`Camera ready (${videoEl.videoWidth}×${videoEl.videoHeight}). Scanning…`);
 
-    function tick() {
-      // live heartbeat so you know we’re looping
+    if ('BarcodeDetector' in window) {
+      try { detector = new window.BarcodeDetector({ formats:['qr_code'] }); } catch(e){ detector = null; }
+    }
+    if(!detector) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+        s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+      });
+    }
+
+    function stopStream(){ if (rafId) cancelAnimationFrame(rafId), rafId=null; if (stream) { stream.getTracks().forEach(t=>t.stop()); stream=null; } }
+    window._stopScanner = stopStream;
+
+    async function tick(){
       dbg(`Scanning… ${Date.now().toString().slice(-4)}`);
-
-      const vw = videoEl.videoWidth  || 640;
-      const vh = videoEl.videoHeight || 480;
-      canvas.width  = vw;
-      canvas.height = vh;
-
-      ctx.drawImage(videoEl, 0, 0, vw, vh);
-
-      const img = ctx.getImageData(0, 0, vw, vh);
-      const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "attemptBoth" });
-
-      if (code) {
-        const raw = code.data || "";
-        const dest = absoluteURL(raw);
-        dbg("QR decoded:\n" + raw);
-        stopStream();
-        location.href = dest;   // jump to the next card
-        return;
+      const vw = videoEl.videoWidth  || 640, vh = videoEl.videoHeight || 480;
+      if(detector) {
+        try {
+          const codes = await detector.detect(videoEl);
+          if (codes && codes.length) {
+            const raw = codes[0].rawValue || ""; const dest = absoluteURL(raw);
+            dbg("QR decoded (native):\n" + raw); stopStream(); location.href = dest; return;
+          }
+        } catch(e){ /* fallthrough to canvas */ }
+      }
+      canvas.width = vw; canvas.height = vh; const c = canvas.getContext('2d');
+      c.drawImage(videoEl, 0, 0, vw, vh);
+      const img = c.getImageData(0, 0, vw, vh);
+      const code = window.jsQR ? jsQR(img.data, img.width, img.height, { inversionAttempts: "attemptBoth" }) : null;
+      if (code && code.data) {
+        const raw = code.data; const dest = absoluteURL(raw);
+        dbg("QR decoded (jsQR):\n" + raw); stopStream(); location.href = dest; return;
       }
       rafId = requestAnimationFrame(tick);
     }
     tick();
   };
 
-  /* close overlay on tap */
-  overlay.onclick = () => {
-    stopStream();
-    overlay.style.display = "none";
-    scanBtn.style.display = "block";
-    dbg("");
-  };
-
-  /* helper to stop camera & loop */
-  function stopStream() {
-    if (rafId) cancelAnimationFrame(rafId), rafId = null;
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
-    }
-  }
+  overlay.onclick = () => { if (window._stopScanner) window._stopScanner(); overlay.style.display = "none"; scanBtn.style.display = "block"; dbg(""); };
   </script>
 </body>
 </html>
