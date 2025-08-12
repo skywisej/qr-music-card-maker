@@ -1,0 +1,121 @@
+<!DOCTYPE html><html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>QR Music Deck • Player Test (flex)</title>
+  <script src="https://sdk.scdn.co/spotify-player.js"></script>
+  <style>
+    html,body{margin:0;height:100%;background:#000;color:#fff;font:16px Helvetica}
+    #wrap{display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;height:100vh}
+    #diag{position:fixed;top:0;right:0;background:rgba(255,255,255,.05);color:#9fe1ff;font:12px/1.25 monospace;padding:8px 10px;border-bottom-left-radius:12px;border-left:1px solid #0af2}
+    #diag b{color:#fff}
+    #dbg{position:fixed;bottom:0;left:0;right:0;max-height:45vh;overflow:auto;background:rgba(0,0,0,.7);color:#0f0;padding:8px;white-space:pre-wrap}
+    button{padding:.8rem 1.2rem;border-radius:12px;border:1px solid #fff3;background:#1db954;color:white;cursor:pointer}
+    input{width:80vw;max-width:580px;padding:.6rem;border-radius:10px;border:1px solid #fff3;background:#111;color:#fff}
+    small{opacity:.8}
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <div>Paste a Spotify track (<code>spotify:track:...</code> OR <code>https://open.spotify.com/track/...</code> OR just the 22-char ID)</div>
+  <input id="uri" placeholder="spotify:track:..." />
+  <div style="display:flex;gap:8px;">
+    <button id="login">Login</button>
+    <button id="play">Play</button>
+  </div>
+  <small>Tip: append <code>?uri=...</code> to this page URL; it accepts all formats.</small>
+</div>
+<div id="diag">device:<b>–</b> token:<b>–</b>m last:<b>–</b> prod:<b>–</b></div>
+<pre id="dbg"></pre>
+<script>
+const TOKEN_KEY  = "hitster_token";
+const TOKEN_TIME = "hitster_token_ts";
+const dbg = m => document.getElementById("dbg").textContent = String(m||"");
+const diag = (obj={}) => {
+  const el = document.getElementById('diag');
+  if (obj.device !== undefined) el.querySelectorAll('b')[0].textContent = obj.device || "–";
+  if (obj.tokenMin !== undefined) el.querySelectorAll('b')[1].textContent = obj.tokenMin ?? "–";
+  if (obj.last !== undefined) el.querySelectorAll('b')[2].textContent = obj.last || "–";
+  if (obj.product !== undefined) el.querySelectorAll('b')[3].textContent = obj.product || "–";
+};
+const qp = new URLSearchParams(location.search);
+const uriEl = document.getElementById("uri");
+if (qp.get("uri")) uriEl.value = qp.get("uri");
+
+function normalizeInput(x){
+  if (!x) return "";
+  x = x.trim();
+  if (x.startsWith("spotify:track:")) return x;
+  const mUrl = x.match(/open\.spotify\.com\/track\/([A-Za-z0-9]{22})/);
+  if (mUrl) return "spotify:track:" + mUrl[1];
+  const mId = x.match(/^[A-Za-z0-9]{22}$/);
+  if (mId) return "spotify:track:" + x;
+  return "";
+}
+
+function needNewToken(){ const ts = +localStorage.getItem(TOKEN_TIME) || 0; return (Date.now() - ts) > 50*60*1000; }
+function requireToken(){ const tok = localStorage.getItem(TOKEN_KEY); if(!tok || needNewToken()){ localStorage.removeItem(TOKEN_KEY); localStorage.setItem("after_auth", location.pathname + location.search); location.href = location.origin + "/qr-music-card-maker/login.html?show_dialog=1"; throw "redirect"; } return tok; }
+const tokenAgeMin = Math.floor((Date.now() - (+localStorage.getItem(TOKEN_TIME)||0))/60000); diag({ tokenMin: tokenAgeMin });
+
+document.getElementById("login").onclick = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_TIME);
+  localStorage.setItem("after_auth", location.pathname + location.search);
+  location.href = location.origin + "/qr-music-card-maker/login.html?show_dialog=1";
+};
+
+let player, deviceId=null;
+window.onSpotifyWebPlaybackSDKReady = () => {
+  player = new Spotify.Player({
+    name: 'QR Music Deck',
+    volume: 0.8,
+    getOAuthToken: cb => cb(localStorage.getItem(TOKEN_KEY))
+  });
+  player.addListener('ready',      ({ device_id }) => { deviceId = device_id; diag({ device: (deviceId||"–").slice(0,8) }); });
+  player.addListener('not_ready',  () => { deviceId = null; diag({ device: "–" }); });
+  player.connect();
+};
+
+async function whoAmI(){
+  try{
+    const r = await fetch("https://api.spotify.com/v1/me", { headers: { "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY) } });
+    const ctype = r.headers.get("content-type") || "";
+    const body = await r.text();
+    let product = "?";
+    if (ctype.includes("application/json")) {
+      try { product = (JSON.parse(body).product || "?"); } catch {}
+    }
+    diag({ product });
+  } catch(e){}
+}
+whoAmI();
+
+document.getElementById("play").onclick = async () => {
+  try { requireToken(); } catch { return; }
+  const trackUri = normalizeInput(document.getElementById("uri").value);
+  if (!trackUri) { dbg("Please enter a valid track (URI, URL, or 22-char ID)"); return; }
+  const start = () => {
+    if (!deviceId) { setTimeout(start, 200); return; }
+    fetch("https://api.spotify.com/v1/me/player", {
+      method:"PUT",
+      headers:{"Authorization":"Bearer "+localStorage.getItem(TOKEN_KEY),"Content-Type":"application/json"},
+      body: JSON.stringify({ device_ids:[deviceId], play:false })
+    }).catch(()=>{}).finally(async ()=>{
+      const r = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+        method:"PUT",
+        headers:{"Authorization":"Bearer "+localStorage.getItem(TOKEN_KEY),"Content-Type":"application/json"},
+        body: JSON.stringify({ uris: [ trackUri ] })
+      });
+      diag({ last: r.status });
+      if (r.status===204) { dbg("Playing OK"); return; }
+      const ctype = r.headers.get("content-type")||"";
+      const txt = await r.text().catch(()=>"(read err)");
+      let msg = "";
+      if (ctype.includes("application/json")) { try{ msg = JSON.parse(txt)?.error?.message || ""; }catch{} }
+      dbg("HTTP "+r.status+" "+(msg||"")+"\nctype: "+ctype+"\n"+txt.slice(0,200));
+    });
+  };
+  start();
+};
+</script>
+</body></html>
