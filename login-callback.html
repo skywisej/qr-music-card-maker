@@ -1,5 +1,7 @@
-<!DOCTYPE html><html><body style="background:black;color:white;"><pre id="log"></pre>
+<!DOCTYPE html><html><body style="background:black;color:white;font:16px Helvetica;">
+<pre id="log" style="white-space:pre-wrap"></pre>
 <script>
+const HOLD_MS = 2500; // show logs briefly before redirect
 const log = (...msg) => document.getElementById("log").textContent += msg.join(" ")+"\n";
 log("callback start");
 const qp       = new URLSearchParams(location.search);
@@ -9,8 +11,8 @@ const expect   = localStorage.getItem("hitster_state");
 const verifier = localStorage.getItem("hitster_verifier");
 log("code?", !!code, "state ok?", state===expect, "verifier?", !!verifier);
 if (!code || !verifier || state !== expect){
-  log("Missing/invalid code or state – reload login");
-  location.href = "/qr-music-card-maker/login.html";
+  log("Missing/invalid code or state – going back to login in a moment…");
+  setTimeout(()=> location.href = "/qr-music-card-maker/login.html?show_dialog=1", HOLD_MS);
   throw "";
 }
 const data = new URLSearchParams({
@@ -34,23 +36,26 @@ try{
     },
     body: data
   });
+  const ctype = r.headers.get("content-type") || "";
   const raw = await r.text();
-  log("TOKEN STATUS", r.status, raw.slice(0,200));
+  log("TOKEN STATUS", r.status, "ctype:", ctype, raw.slice(0,200));
   if(!r.ok) throw new Error("token fetch "+r.status);
   const js = JSON.parse(raw);
   storeToken(js.access_token);
   try{
-    const me = await fetch("https://api.spotify.com/v1/me", { headers: { "Authorization":"Bearer "+js.access_token } }).then(x=>x.json());
-    log("Hello", me.display_name, "product:", me.product);
-    if (me.product && me.product.toLowerCase() !== "premium"){
-      log("NOTE: Spotify Premium is required to start playback from the browser.");
-    }
-  }catch(e){}
-  const next = localStorage.getItem("after_auth") || "/qr-music-card-maker/cards/html/track1.html?v=v7";
+    const meR = await fetch("https://api.spotify.com/v1/me", { headers: { "Authorization":"Bearer "+js.access_token } });
+    const meType = meR.headers.get("content-type")||"";
+    const meTxt = await meR.text();
+    let product = "?";
+    if (meType.includes("application/json")) { try { product = (JSON.parse(meTxt).product||"?"); } catch {} }
+    log("Hello product:", product);
+  }catch(e){ log("Note: /me check failed silently"); }
+  const next = localStorage.getItem("after_auth") || "/qr-music-card-maker/cards/html/track1.html?v=v7.1&debug=1";
   localStorage.removeItem("after_auth");
-  location.href = next;
+  setTimeout(()=> location.href = next, HOLD_MS);
 }catch(e){
   log("Token exchange failed:", e);
+  setTimeout(()=> location.href = "/qr-music-card-maker/login.html?show_dialog=1", HOLD_MS);
 }
 })();
 </script>
